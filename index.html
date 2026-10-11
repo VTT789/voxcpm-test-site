@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>VoxCPM2 Speech Tester</title>
+<style>
+:root{font-family:Inter,system-ui,-apple-system,Segoe UI,Arial,sans-serif;color:#172033;background:#f4f7fb}
+*{box-sizing:border-box}body{margin:0;padding:32px 16px}
+main{max-width:780px;margin:auto}.top{margin-bottom:22px}
+.eyebrow{font-size:12px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:#5269d8}
+h1{margin:8px 0;font-size:clamp(28px,5vw,42px);letter-spacing:-.04em}
+.sub{color:#657087;line-height:1.6}
+.card{background:white;border:1px solid #e2e8f0;border-radius:18px;padding:22px;margin:16px 0;box-shadow:0 8px 30px #182b4d0a}
+label{display:block;font-weight:700;margin-bottom:10px}
+textarea{width:100%;min-height:160px;resize:vertical;border:1px solid #d7deea;border-radius:12px;padding:14px;font:inherit;line-height:1.7;outline:none}
+textarea:focus{border-color:#6577e8;box-shadow:0 0 0 3px #6577e81c}
+.row{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:14px}
+button{border:0;border-radius:11px;background:#4f5ed7;color:white;padding:12px 18px;font-weight:750;font-size:15px;cursor:pointer}
+button:disabled{opacity:.55;cursor:wait}.secondary{background:#edf0ff;color:#3644b8}
+#status{font-size:14px;color:#5d687c;line-height:1.5}.pill{display:inline-block;padding:5px 9px;border-radius:99px;background:#edf7ef;color:#287441;font-size:12px;font-weight:750}
+audio{width:100%;margin-top:16px}a{color:#4c59c7;font-weight:700}
+.small{font-size:13px;color:#68758a;line-height:1.6}.hidden{display:none}
+</style>
+</head>
+<body>
+<main>
+  <header class="top">
+    <div class="eyebrow">Open-source speech model · Test interface</div>
+    <h1>VoxCPM2 Speech Tester</h1>
+    <p class="sub">Enter text and generate a WAV sample with the VoxCPM2 model. You can try Khmer text, but pronunciation quality may vary.</p>
+  </header>
+  <section class="card">
+    <div class="row" style="justify-content:space-between;margin-top:0">
+      <label for="text">Text to speak</label>
+      <span class="pill">Max 500 characters</span>
+    </div>
+    <textarea id="text" maxlength="500" placeholder="សួស្តី! នេះជាការសាកល្បងសំឡេងខ្មែរ។">សួស្តី! នេះជាការសាកល្បងសំឡេងខ្មែរ។</textarea>
+    <div class="row">
+      <button id="generate">Generate speech</button>
+      <button id="health" class="secondary">Check server</button>
+      <span id="status" role="status">Ready to test.</span>
+    </div>
+    <audio id="player" controls class="hidden"></audio>
+    <div class="row">
+      <a id="download" class="hidden" download="voxcpm2-test.wav">Download WAV</a>
+    </div>
+  </section>
+  <section class="card">
+    <strong>Server status</strong>
+    <p id="healthText" class="small">Click “Check server” to see whether the API is online and whether the model has loaded.</p>
+  </section>
+  <p class="small">Note: VoxCPM2 downloads model weights on first use. The first request may take a long time or fail on small hosting instances due to memory or dependency limits. Do not expose an unrestricted public generation endpoint without adding rate limits or access control.</p>
+  <p class="small">Model: <a href="https://github.com/OpenBMB/VoxCPM" target="_blank" rel="noreferrer">OpenBMB/VoxCPM</a></p>
+</main>
+<script>
+const textEl=document.getElementById('text');
+const generateBtn=document.getElementById('generate');
+const statusEl=document.getElementById('status');
+const player=document.getElementById('player');
+const download=document.getElementById('download');
+const healthText=document.getElementById('healthText');
+let audioUrl=null;
+
+document.getElementById('health').addEventListener('click', async()=>{
+  healthText.textContent='Checking server...';
+  try{
+    const r=await fetch('/api/health');
+    const d=await r.json();
+    healthText.textContent=`API online: ${d.ok}. Model loaded: ${d.model_loaded}. Model: ${d.model_id}. ${d.note}`;
+  }catch(e){healthText.textContent='Could not reach the API: '+e.message;}
+});
+
+generateBtn.addEventListener('click', async()=>{
+  const text=textEl.value.trim();
+  if(!text){statusEl.textContent='Please enter text first.';return;}
+  generateBtn.disabled=true;statusEl.textContent='Generating audio. First run may download the model...';
+  player.classList.add('hidden');download.classList.add('hidden');
+  try{
+    const r=await fetch('/api/generate',{
+      method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text})
+    });
+    if(!r.ok){
+      let message='Request failed ('+r.status+')';
+      try{const d=await r.json();message=d.detail||message;}catch{}
+      throw new Error(message);
+    }
+    const blob=await r.blob();
+    if(audioUrl)URL.revokeObjectURL(audioUrl);
+    audioUrl=URL.createObjectURL(blob);
+    player.src=audioUrl;player.classList.remove('hidden');
+    download.href=audioUrl;download.classList.remove('hidden');
+    statusEl.textContent='Audio generated successfully.';
+  }catch(e){statusEl.textContent='Error: '+e.message;}
+  finally{generateBtn.disabled=false;}
+});
+</script>
+</body>
+</html>
